@@ -1,0 +1,3 @@
+[submodule "Air_Hockey_Robot_EVO"]
+	path = Air_Hockey_Robot_EVO
+	url = https://github.com/jjrobots/Air_Hockey_Robot_EVO.git
