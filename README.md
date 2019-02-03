@@ -4,7 +4,7 @@ Meine Ideen zu dem Section77 Projekt:
 * Hardware https://www.jjrobots.com/the-open-source-air-hockey-robot/
 * Source im submodule Air_Hockey_Robot_EVO
 
-![Übersicht](https://github.com/Andy1978/Airhockey/doc/Uebersicht.png)
+![Übersicht](https://github.com/Andy1978/Airhockey/blob/master/doc/Uebersicht.png)
 
 ## Arduino Software
 
