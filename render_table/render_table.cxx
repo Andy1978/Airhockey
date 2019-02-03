@@ -24,23 +24,7 @@
 
 typedef char Config[HEIGHT][WIDTH];
 
-struct puzzle {
-  struct puzzle *backptr;
-  struct puzzle *solnptr;
-  Config pieces;
-  struct puzzle *next;
-  unsigned hashvalue;
-};
-
 #define HASHSIZE 10691
-
-struct puzzlelist {
-  struct puzzle *puzzle;
-  struct puzzlelist *next;
-};
-
-static char convert[PIECES + 1] =
-{0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 4};
 
 static unsigned char colors[PIECES + 1][3] =
 {
@@ -58,8 +42,6 @@ static unsigned char colors[PIECES + 1][3] =
 };
 
 void changeState(void);
-
-static struct puzzle *hashtable[HASHSIZE];
 
 int curX, curY, visible;
 
@@ -98,29 +80,6 @@ static GLint viewport[4];
 
 #define srandom srand
 #define random() (rand() >> 2)
-
-unsigned
-hash(Config config)
-{
-  int i, j, value;
-
-  value = 0;
-  for (i = 0; i < HEIGHT; i++) {
-    for (j = 0; j < WIDTH; j++) {
-      value = value + convert[(int)config[i][j]];
-      value *= 6;
-    }
-  }
-  return (value);
-}
-
-int
-solution(Config config)
-{
-  if (config[4][1] == 10 && config[4][2] == 10)
-    return (1);
-  return (0);
-}
 
 float boxcoords[][3] =
 {
@@ -432,184 +391,6 @@ redraw(void)
     glutSwapBuffers();
   else
     glFinish();
-}
-
-void
-multMatrices(const GLfloat a[16], const GLfloat b[16], GLfloat r[16])
-{
-  int i, j;
-
-  for (i = 0; i < 4; i++) {
-    for (j = 0; j < 4; j++) {
-      r[i * 4 + j] =
-        a[i * 4 + 0] * b[0 * 4 + j] +
-        a[i * 4 + 1] * b[1 * 4 + j] +
-        a[i * 4 + 2] * b[2 * 4 + j] +
-        a[i * 4 + 3] * b[3 * 4 + j];
-    }
-  }
-}
-
-void
-makeIdentity(GLfloat m[16])
-{
-  m[0 + 4 * 0] = 1;
-  m[0 + 4 * 1] = 0;
-  m[0 + 4 * 2] = 0;
-  m[0 + 4 * 3] = 0;
-  m[1 + 4 * 0] = 0;
-  m[1 + 4 * 1] = 1;
-  m[1 + 4 * 2] = 0;
-  m[1 + 4 * 3] = 0;
-  m[2 + 4 * 0] = 0;
-  m[2 + 4 * 1] = 0;
-  m[2 + 4 * 2] = 1;
-  m[2 + 4 * 3] = 0;
-  m[3 + 4 * 0] = 0;
-  m[3 + 4 * 1] = 0;
-  m[3 + 4 * 2] = 0;
-  m[3 + 4 * 3] = 1;
-}
-
-/*
-   ** inverse = invert(src)
- */
-int
-invertMatrix(const GLfloat src[16], GLfloat inverse[16])
-{
-  int i, j, k, swap;
-  double t;
-  GLfloat temp[4][4];
-
-  for (i = 0; i < 4; i++) {
-    for (j = 0; j < 4; j++) {
-      temp[i][j] = src[i * 4 + j];
-    }
-  }
-  makeIdentity(inverse);
-
-  for (i = 0; i < 4; i++) {
-    /* 
-       ** Look for largest element in column */
-    swap = i;
-    for (j = i + 1; j < 4; j++) {
-      if (fabs(temp[j][i]) > fabs(temp[i][i])) {
-        swap = j;
-      }
-    }
-
-    if (swap != i) {
-      /* 
-         ** Swap rows. */
-      for (k = 0; k < 4; k++) {
-        t = temp[i][k];
-        temp[i][k] = temp[swap][k];
-        temp[swap][k] = t;
-
-        t = inverse[i * 4 + k];
-        inverse[i * 4 + k] = inverse[swap * 4 + k];
-        inverse[swap * 4 + k] = t;
-      }
-    }
-    if (temp[i][i] == 0) {
-      /* 
-         ** No non-zero pivot.  The matrix is singular, which
-         shouldn't ** happen.  This means the user gave us a
-         bad matrix. */
-      return 0;
-    }
-    t = temp[i][i];
-    for (k = 0; k < 4; k++) {
-      temp[i][k] /= t;
-      inverse[i * 4 + k] /= t;
-    }
-    for (j = 0; j < 4; j++) {
-      if (j != i) {
-        t = temp[j][i];
-        for (k = 0; k < 4; k++) {
-          temp[j][k] -= temp[i][k] * t;
-          inverse[j * 4 + k] -= inverse[i * 4 + k] * t;
-        }
-      }
-    }
-  }
-  return 1;
-}
-
-/*
-   ** This is a screwball function.  What it does is the following:
-   ** Given screen x and y coordinates, compute the corresponding object space 
-   **   x and y coordinates given that the object space z is 0.9 + OFFSETZ.
-   ** Since the tops of (most) pieces are at z = 0.9 + OFFSETZ, we use that 
-   **   number.
- */
-int
-computeCoords(int piece, int mousex, int mousey,
-  GLfloat * selx, GLfloat * sely)
-{
-  GLfloat modelMatrix[16];
-  GLfloat projMatrix[16];
-  GLfloat finalMatrix[16];
-  GLfloat in[4];
-  GLfloat a, b, c, d;
-  GLfloat top, bot;
-  GLfloat z;
-  GLfloat w;
-  GLfloat height;
-
-  if (piece == 0)
-    return 0;
-  height = zsize[piece] - 0.1 + OFFSETZ;
-
-  glGetFloatv(GL_PROJECTION_MATRIX, projMatrix);
-  glGetFloatv(GL_MODELVIEW_MATRIX, modelMatrix);
-  multMatrices(modelMatrix, projMatrix, finalMatrix);
-  if (!invertMatrix(finalMatrix, finalMatrix))
-    return 0;
-
-  in[0] = (2.0 * (mousex - viewport[0]) / viewport[2]) - 1;
-  in[1] = (2.0 * ((H - mousey) - viewport[1]) / viewport[3]) - 1;
-
-  a = in[0] * finalMatrix[0 * 4 + 2] +
-    in[1] * finalMatrix[1 * 4 + 2] +
-    finalMatrix[3 * 4 + 2];
-  b = finalMatrix[2 * 4 + 2];
-  c = in[0] * finalMatrix[0 * 4 + 3] +
-    in[1] * finalMatrix[1 * 4 + 3] +
-    finalMatrix[3 * 4 + 3];
-  d = finalMatrix[2 * 4 + 3];
-
-  /* 
-     ** Ok, now we need to solve for z: **   (a + b z) / (c + d 
-
-     z) = height. ** ("height" is the height in object space we 
-
-     want to solve z for) ** ** ==>  a + b z = height c +
-     height d z **      bz - height d z = height c - a ** z =
-     (height c - a) / (b - height d) */
-  top = height * c - a;
-  bot = b - height * d;
-  if (bot == 0.0)
-    return 0;
-
-  z = top / bot;
-
-  /* 
-     ** Ok, no problem. ** Now we solve for x and y.  We know
-     that w = c + d z, so we compute it. */
-  w = c + d * z;
-
-  /* 
-     ** Now for x and y: */
-  *selx = (in[0] * finalMatrix[0 * 4 + 0] +
-    in[1] * finalMatrix[1 * 4 + 0] +
-    z * finalMatrix[2 * 4 + 0] +
-    finalMatrix[3 * 4 + 0]) / w - OFFSETX;
-  *sely = (in[0] * finalMatrix[0 * 4 + 1] +
-    in[1] * finalMatrix[1 * 4 + 1] +
-    z * finalMatrix[2 * 4 + 1] +
-    finalMatrix[3 * 4 + 1]) / w - OFFSETY;
-  return 1;
 }
 
 static int solving;
