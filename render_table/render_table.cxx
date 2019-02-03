@@ -4,7 +4,6 @@
  * Renderer des Airhockey Tischs:
  * Input:  Position x, y des Pucks und "Schubser" in mm
  * Output: Perspektivische Ansicht
- * 
  */
 
 #include <stdio.h>
@@ -61,16 +60,11 @@ static unsigned char colors[PIECES + 1][3] =
 void changeState(void);
 
 static struct puzzle *hashtable[HASHSIZE];
-static struct puzzle *startPuzzle;
-static struct puzzlelist *puzzles;
-static struct puzzlelist *lastentry;
 
 int curX, curY, visible;
 
 #define MOVE_SPEED 0.2
 static unsigned char movingPiece;
-static float move_x, move_y;
-static float curquat[4];
 static int doubleBuffer = 1;
 static int depth = 1;
 
@@ -98,11 +92,6 @@ static Config thePuzzle =
   {6, 4, 3, 5},
   {2, 0, 0, 1}
 };
-
-static int xadds[4] =
-{-1, 0, 1, 0};
-static int yadds[4] =
-{0, -1, 0, 1};
 
 static long W = 400, H = 300;
 static GLint viewport[4];
@@ -416,7 +405,6 @@ drawAll(void)
   for (i = 1; i <= PIECES; i++) {
     done[i] = 0;
   }
-  glLoadName(0);
   drawContainer();
   for (i = 0; i < HEIGHT; i++) {
     for (j = 0; j < WIDTH; j++) {
@@ -426,12 +414,7 @@ drawAll(void)
       if (done[piece])
         continue;
       done[piece] = 1;
-      glLoadName(piece);
-      if (piece == movingPiece) {
-        drawBox(piece, move_x, move_y);
-      } else {
-        drawBox(piece, j, i);
-      }
+      drawBox(piece, j, i);
     }
   }
 }
@@ -449,349 +432,6 @@ redraw(void)
     glutSwapBuffers();
   else
     glFinish();
-}
-
-void
-solidifyChain(struct puzzle *puzzle)
-{
-  int i;
-  char buf[256];
-
-  i = 0;
-  while (puzzle->backptr) {
-    i++;
-    puzzle->backptr->solnptr = puzzle;
-    puzzle = puzzle->backptr;
-  }
-  sprintf(buf, "%d moves to complete!", i);
-  glutSetWindowTitle(buf);
-}
-
-int
-addConfig(Config config, struct puzzle *back)
-{
-  unsigned hashvalue;
-  struct puzzle *newpiece;
-  struct puzzlelist *newlistentry;
-
-  hashvalue = hash(config);
-
-  newpiece = hashtable[hashvalue % HASHSIZE];
-  while (newpiece != NULL) {
-    if (newpiece->hashvalue == hashvalue) {
-      int i, j;
-
-      for (i = 0; i < WIDTH; i++) {
-        for (j = 0; j < HEIGHT; j++) {
-          if (convert[(int)config[j][i]] !=
-            convert[(int)newpiece->pieces[j][i]])
-            goto nomatch;
-        }
-      }
-      return 0;
-    }
-  nomatch:
-    newpiece = newpiece->next;
-  }
-
-  newpiece = (struct puzzle *) malloc(sizeof(struct puzzle));
-  newpiece->next = hashtable[hashvalue % HASHSIZE];
-  newpiece->hashvalue = hashvalue;
-  memcpy(newpiece->pieces, config, HEIGHT * WIDTH);
-  newpiece->backptr = back;
-  newpiece->solnptr = NULL;
-  hashtable[hashvalue % HASHSIZE] = newpiece;
-
-  newlistentry = (struct puzzlelist *) malloc(sizeof(struct puzzlelist));
-  newlistentry->puzzle = newpiece;
-  newlistentry->next = NULL;
-
-  if (lastentry) {
-    lastentry->next = newlistentry;
-  } else {
-    puzzles = newlistentry;
-  }
-  lastentry = newlistentry;
-
-  if (back == NULL) {
-    startPuzzle = newpiece;
-  }
-  if (solution(config)) {
-    solidifyChain(newpiece);
-    return 1;
-  }
-  return 0;
-}
-
-/* Checks if a space can move */
-int
-canmove0(Config pieces, int x, int y, int dir, Config newpieces)
-{
-  char piece;
-  int xadd, yadd;
-  int l, m;
-
-  xadd = xadds[dir];
-  yadd = yadds[dir];
-
-  if (x + xadd < 0 || x + xadd >= WIDTH ||
-    y + yadd < 0 || y + yadd >= HEIGHT)
-    return 0;
-  piece = pieces[y + yadd][x + xadd];
-  if (piece == 0)
-    return 0;
-  memcpy(newpieces, pieces, HEIGHT * WIDTH);
-  for (l = 0; l < WIDTH; l++) {
-    for (m = 0; m < HEIGHT; m++) {
-      if (newpieces[m][l] == piece)
-        newpieces[m][l] = 0;
-    }
-  }
-  xadd = -xadd;
-  yadd = -yadd;
-  for (l = 0; l < WIDTH; l++) {
-    for (m = 0; m < HEIGHT; m++) {
-      if (pieces[m][l] == piece) {
-        int newx, newy;
-
-        newx = l + xadd;
-        newy = m + yadd;
-        if (newx < 0 || newx >= WIDTH ||
-          newy < 0 || newy >= HEIGHT)
-          return 0;
-        if (newpieces[newy][newx] != 0)
-          return 0;
-        newpieces[newy][newx] = piece;
-      }
-    }
-  }
-  return 1;
-}
-
-/* Checks if a piece can move */
-int
-canmove(Config pieces, int x, int y, int dir, Config newpieces)
-{
-  int xadd, yadd;
-
-  xadd = xadds[dir];
-  yadd = yadds[dir];
-
-  if (x + xadd < 0 || x + xadd >= WIDTH ||
-    y + yadd < 0 || y + yadd >= HEIGHT)
-    return 0;
-  if (pieces[y + yadd][x + xadd] == pieces[y][x]) {
-    return canmove(pieces, x + xadd, y + yadd, dir, newpieces);
-  }
-  if (pieces[y + yadd][x + xadd] != 0)
-    return 0;
-  return canmove0(pieces, x + xadd, y + yadd, (dir + 2) % 4, newpieces);
-}
-
-int
-generateNewConfigs(struct puzzle *puzzle)
-{
-  int i, j, k;
-  Config pieces;
-  Config newpieces;
-
-  memcpy(pieces, puzzle->pieces, HEIGHT * WIDTH);
-  for (i = 0; i < WIDTH; i++) {
-    for (j = 0; j < HEIGHT; j++) {
-      if (pieces[j][i] == 0) {
-        for (k = 0; k < 4; k++) {
-          if (canmove0(pieces, i, j, k, newpieces)) {
-            if (addConfig(newpieces, puzzle))
-              return 1;
-          }
-        }
-      }
-    }
-  }
-  return 0;
-}
-
-void
-freeSolutions(void)
-{
-  struct puzzlelist *nextpuz;
-  struct puzzle *puzzle, *next;
-  int i;
-
-  while (puzzles) {
-    nextpuz = puzzles->next;
-    free((char *) puzzles);
-    puzzles = nextpuz;
-  }
-  lastentry = NULL;
-  for (i = 0; i < HASHSIZE; i++) {
-    puzzle = hashtable[i];
-    hashtable[i] = NULL;
-    while (puzzle) {
-      next = puzzle->next;
-      free((char *) puzzle);
-      puzzle = next;
-    }
-  }
-  startPuzzle = NULL;
-}
-
-int
-continueSolving(void)
-{
-  struct puzzle *nextpuz;
-  int i, j;
-  int movedPiece;
-  int movedir;
-  int fromx, fromy;
-  int tox, toy;
-
-  if (startPuzzle == NULL)
-    return 0;
-  if (startPuzzle->solnptr == NULL) {
-    freeSolutions();
-    return 0;
-  }
-  nextpuz = startPuzzle->solnptr;
-  movedPiece = 0;
-  movedir = 0;
-  for (i = 0; i < HEIGHT; i++) {
-    for (j = 0; j < WIDTH; j++) {
-      if (startPuzzle->pieces[i][j] != nextpuz->pieces[i][j]) {
-        if (startPuzzle->pieces[i][j]) {
-          movedPiece = startPuzzle->pieces[i][j];
-          fromx = j;
-          fromy = i;
-          if (i < HEIGHT - 1 && nextpuz->pieces[i + 1][j] == movedPiece) {
-            movedir = 3;
-          } else {
-            movedir = 2;
-          }
-          goto found_piece;
-        } else {
-          movedPiece = nextpuz->pieces[i][j];
-          if (i < HEIGHT - 1 &&
-            startPuzzle->pieces[i + 1][j] == movedPiece) {
-            fromx = j;
-            fromy = i + 1;
-            movedir = 1;
-          } else {
-            fromx = j + 1;
-            fromy = i;
-            movedir = 0;
-          }
-          goto found_piece;
-        }
-      }
-    }
-  }
-  glutSetWindowTitle((char *)"What!  No change?");
-  freeSolutions();
-  return 0;
-
-found_piece:
-  if (!movingPiece) {
-    movingPiece = movedPiece;
-    move_x = fromx;
-    move_y = fromy;
-  }
-  move_x += xadds[movedir] * MOVE_SPEED;
-  move_y += yadds[movedir] * MOVE_SPEED;
-
-  tox = fromx + xadds[movedir];
-  toy = fromy + yadds[movedir];
-
-  if (move_x > tox - MOVE_SPEED / 2 && move_x < tox + MOVE_SPEED / 2 &&
-    move_y > toy - MOVE_SPEED / 2 && move_y < toy + MOVE_SPEED / 2) {
-    startPuzzle = nextpuz;
-    movingPiece = 0;
-  }
-  memcpy(thePuzzle, startPuzzle->pieces, HEIGHT * WIDTH);
-  changeState();
-  return 1;
-}
-
-int
-solvePuzzle(void)
-{
-  struct puzzlelist *nextpuz;
-  char buf[256];
-  int i;
-
-  if (solution(thePuzzle)) {
-    glutSetWindowTitle((char *)"Puzzle already solved!");
-    return 0;
-  }
-  addConfig(thePuzzle, NULL);
-  i = 0;
-
-  while (puzzles) {
-    i++;
-    if (generateNewConfigs(puzzles->puzzle))
-      break;
-    nextpuz = puzzles->next;
-    free((char *) puzzles);
-    puzzles = nextpuz;
-  }
-  if (puzzles == NULL) {
-    freeSolutions();
-    sprintf(buf, "I can't solve it! (%d positions examined)", i);
-    glutSetWindowTitle(buf);
-    return 1;
-  }
-  return 1;
-}
-
-int
-selectPiece(int mousex, int mousey)
-{
-  long hits;
-  GLuint selectBuf[1024];
-  GLuint closest;
-  GLuint dist;
-
-  glSelectBuffer(1024, selectBuf);
-  (void) glRenderMode(GL_SELECT);
-  glInitNames();
-
-  /* Because LoadName() won't work with no names on the stack */
-  glPushName(0);
-
-  glMatrixMode(GL_PROJECTION);
-  glLoadIdentity();
-  gluPickMatrix(mousex, H - mousey, 4, 4, viewport);
-  gluPerspective(45, viewport[2]*1.0/viewport[3], 0.1, 100.0);
-
-  drawAll();
-
-  hits = glRenderMode(GL_RENDER);
-  if (hits <= 0) {
-    return 0;
-  }
-  closest = 0;
-  dist = 0xFFFFFFFFU; //2147483647;
-  while (hits) {
-    if (selectBuf[(hits - 1) * 4 + 1] < dist) {
-      dist = selectBuf[(hits - 1) * 4 + 1];
-      closest = selectBuf[(hits - 1) * 4 + 3];
-    }
-    hits--;
-  }
-  return closest;
-}
-
-void
-nukePiece(int piece)
-{
-  int i, j;
-
-  for (i = 0; i < HEIGHT; i++) {
-    for (j = 0; j < WIDTH; j++) {
-      if (thePuzzle[i][j] == piece) {
-        thePuzzle[i][j] = 0;
-      }
-    }
-  }
 }
 
 void
@@ -972,122 +612,6 @@ computeCoords(int piece, int mousex, int mousey,
   return 1;
 }
 
-static int selected;
-static int selectx, selecty;
-static float selstartx, selstarty;
-
-void
-grabPiece(int piece, float selx, float sely)
-{
-  int hit;
-
-  selectx = int(selx);
-  selecty = int(sely);
-  if (selectx < 0 || selecty < 0 || selectx >= WIDTH || selecty >= HEIGHT) {
-    return;
-  }
-  hit = thePuzzle[selecty][selectx];
-  if (hit != piece)
-    return;
-  if (hit) {
-    movingPiece = hit;
-    while (selectx > 0 && thePuzzle[selecty][selectx - 1] == movingPiece) {
-      selectx--;
-    }
-    while (selecty > 0 && thePuzzle[selecty - 1][selectx] == movingPiece) {
-      selecty--;
-    }
-    move_x = selectx;
-    move_y = selecty;
-    selected = 1;
-    selstartx = selx;
-    selstarty = sely;
-  } else {
-    selected = 0;
-  }
-  changeState();
-}
-
-void
-moveSelection(float selx, float sely)
-{
-  float deltax, deltay;
-  int dir;
-  Config newpieces;
-
-  if (!selected)
-    return;
-  deltax = selx - selstartx;
-  deltay = sely - selstarty;
-
-  if (fabs(deltax) > fabs(deltay)) {
-    deltay = 0;
-    if (deltax > 0) {
-      if (deltax > 1)
-        deltax = 1;
-      dir = 2;
-    } else {
-      if (deltax < -1)
-        deltax = -1;
-      dir = 0;
-    }
-  } else {
-    deltax = 0;
-    if (deltay > 0) {
-      if (deltay > 1)
-        deltay = 1;
-      dir = 3;
-    } else {
-      if (deltay < -1)
-        deltay = -1;
-      dir = 1;
-    }
-  }
-  if (canmove(thePuzzle, selectx, selecty, dir, newpieces)) {
-    move_x = deltax + selectx;
-    move_y = deltay + selecty;
-    if (deltax > 0.5) {
-      memcpy(thePuzzle, newpieces, HEIGHT * WIDTH);
-      selectx++;
-      selstartx++;
-    } else if (deltax < -0.5) {
-      memcpy(thePuzzle, newpieces, HEIGHT * WIDTH);
-      selectx--;
-      selstartx--;
-    } else if (deltay > 0.5) {
-      memcpy(thePuzzle, newpieces, HEIGHT * WIDTH);
-      selecty++;
-      selstarty++;
-    } else if (deltay < -0.5) {
-      memcpy(thePuzzle, newpieces, HEIGHT * WIDTH);
-      selecty--;
-      selstarty--;
-    }
-  } else {
-    if (deltay > 0 && thePuzzle[selecty][selectx] == 10 &&
-      selectx == 1 && selecty == 3) {
-      /* Allow visual movement of solution piece outside of the 
-
-         box */
-      move_x = selectx;
-      move_y = sely - selstarty + selecty;
-    } else {
-      move_x = selectx;
-      move_y = selecty;
-    }
-  }
-}
-
-void
-dropSelection(void)
-{
-  if (!selected)
-    return;
-  movingPiece = 0;
-  selected = 0;
-  changeState();
-}
-
 static int solving;
 static int spinning;
 
@@ -1101,30 +625,10 @@ Reshape(int width, int height)
   glGetIntegerv(GL_VIEWPORT, viewport);
 }
 
-void
-toggleSolve(void)
-{
-    if (solving) {
-      freeSolutions();
-      solving = 0;
-      glutChangeToMenuEntry(1, (char *)"Solving", 1);
-      glutSetWindowTitle((char *)"glpuzzle");
-      movingPiece = 0;
-    } else {
-      glutChangeToMenuEntry(1, (char *)"Stop solving", 1);
-      glutSetWindowTitle((char *)"Solving...");
-      if (solvePuzzle()) {
-        solving = 1;
-      }
-    }
-    changeState();
-    glutPostRedisplay();
-}
-
 void reset(void)
 {
     if (solving) {
-      freeSolutions();
+      //freeSolutions();
       solving = 0;
       glutChangeToMenuEntry(1, (char *)"Solving", 1);
       glutSetWindowTitle((char *)"glpuzzle");
@@ -1138,35 +642,13 @@ void reset(void)
 void
 keyboard(unsigned char c, int x, int y)
 {
-  int piece;
-
   switch (c) {
   case 27:
     exit(0);
     break;
-  case 'D':
-  case 'd':
-    if (solving) {
-      freeSolutions();
-      solving = 0;
-      glutChangeToMenuEntry(1, (char *)"Solving", 1);
-      glutSetWindowTitle((char *)"glpuzzle");
-      movingPiece = 0;
-      changeState();
-    }
-    piece = selectPiece(x, y);
-    if (piece) {
-      nukePiece(piece);
-    }
-    glutPostRedisplay();
-    break;
   case 'R':
   case 'r':
     reset();
-    break;
-  case 'S':
-  case 's':
-    toggleSolve();
     break;
   case 'b':
   case 'B':
@@ -1276,9 +758,6 @@ void
 menu(int choice)
 {
    switch(choice) {
-   case 1:
-      toggleSolve();
-      break;
    case 2:
       reset();
       break;
