@@ -2,6 +2,7 @@
 Meine Ideen zu dem Section77 Projekt:
 
 * Hardware https://www.jjrobots.com/the-open-source-air-hockey-robot/
+* airhockeytisch https://trainer-4you.de/buffalo-mini-airhockeytisch-explorer-mini-air-hockey-table-4606-000/
 * Source im submodule Air_Hockey_Robot_EVO
 
 ![Übersicht](https://github.com/Andy1978/Airhockey/blob/master/doc/Uebersicht.png)
